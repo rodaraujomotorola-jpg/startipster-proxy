@@ -5,10 +5,10 @@ const cors = require('cors');
 const app = express();
 app.use(cors());
 
+// Vinculação de porta recomendada para ambientes como a Railway
 const PORT = process.env.PORT || 3000;
 const CHAVE_API = process.env.API_KEY;
 
-// URLs da API-Football (v3)
 const URL_JOGOS = 'https://v3.football.api-sports.io/fixtures';
 const HEADERS = {
     'x-rapidapi-host': 'v3.football.api-sports.io',
@@ -17,41 +17,29 @@ const HEADERS = {
 
 let analiseJogos = [];
 
-// Função do Cérebro: Avalia as métricas exatas e gera os gatilhos de valor
+// Cérebro de Análise Quantitativa
 function analisarGatilhos(jogo) {
     const tempo = jogo.fixture.status.elapsed;
     const golsCasa = jogo.goals.home ?? 0;
     const golsVis = jogo.goals.away ?? 0;
     
-    // Captura as estatísticas brutas da API (se houver)
-    const stats = jogo.events || []; 
-    
-    // Simulação de métricas avançadas baseadas no momentum geral da API
-    // Na v3 completa, esses dados vêm do endpoint /fixtures/statistics
+    // Simulação controlada de métricas de pressão para validação de layout
     let chutesAoGol = Math.floor(Math.random() * 6); 
     let ataquesPerigososMin = (Math.random() * 1.4).toFixed(2);
     let escanteiosUltimos10 = Math.floor(Math.random() * 4);
 
-    let gatilhoSugerido = "Analisando Ritmo...";
-    let corBadge = "#8d8d99"; // Cinza padrão
+    let gatilhoSugerido = "🛡️ Ritmo Controlado (Sem Valor)";
+    let corBadge = "#4d4d57";
 
-    // 🎯 GATILHO 1: Pressão Total no Fim do Jogo (Gol Late)
     if (tempo >= 75 && golsCasa === golsVis && ataquesPerigososMin >= 1.0) {
         gatilhoSugerido = "🔥 Padrão Pressão: Gol no Fim";
-        corBadge = "#f75a68"; // Vermelho Alerta
-    }
-    // 🎯 GATILHO 2: Favorito Pressionando / Empate de Valor
-    else if (tempo > 20 && tempo < 70 && (golsCasa !== golsVis) && chutesAoGol >= 3) {
+        corBadge = "#f75a68";
+    } else if (tempo > 20 && tempo < 70 && (golsCasa !== golsVis) && chutesAoGol >= 3) {
         gatilhoSugerido = "📈 Tendência: Próximo Gol (Back)";
-        corBadge = "#00b37e"; // Verde Sucesso
-    }
-    // 🎯 GATILHO 3: Corner (Escanteios) em Massa
-    else if (escanteiosUltimos10 >= 2 && ataquesPerigososMin >= 1.1) {
+        corBadge = "#00b37e";
+    } else if (escanteiosUltimos10 >= 2 && ataquesPerigososMin >= 1.1) {
         gatilhoSugerido = "📐 Força: Escanteios (Corners)";
-        corBadge = "#fba94c"; // Laranja
-    } else {
-        gatilhoSugerido = "🛡️ Ritmo Controlado (Sem Valor)";
-        corBadge = "#4d4d57";
+        corBadge = "#fba94c";
     }
 
     return {
@@ -61,6 +49,7 @@ function analisarGatilhos(jogo) {
     };
 }
 
+// Coleta de dados assíncrona isolada para não travar o boot do servidor
 async function rodarMotorAnalise() {
     if (!CHAVE_API) {
         console.log("❌ ERRO: API_KEY oculta ou não configurada.");
@@ -85,22 +74,27 @@ async function rodarMotorAnalise() {
             };
         });
 
-        console.log(`📊 STAR TIPSTER 5.0: ${analiseJogos.length} jogos processados.`);
+        console.log(`📊 STAR TIPSTER 5.0: ${analiseJogos.length} jogos processados com sucesso.`);
     } catch (erro) {
-        console.log("Erro no processador do motor: " + erro.message);
+        console.log("⚠️ Erro ao atualizar dados da API: " + erro.message);
     }
 }
 
-// Intervalo de segurança do plano: 5 minutos
-rodarMotorAnalise();
-setInterval(rodarMotorAnalise, 300000);
+// Ativa a escuta do servidor Web IMEDIATAMENTE (Evita o SIGTERM da Railway)
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Motor HTML operando de forma estável na porta ${PORT}`);
+    
+    // Dispara as consultas após o servidor web avisar que está de pé
+    rodarMotorAnalise();
+    setInterval(rodarMotorAnalise, 300000);
+});
 
-// Motor HTML Estilizado Profissional
+// Entrega da Interface HTML atualizada por polling limpo
 app.get('/', (req, res) => {
     let linhasDosJogos = '';
     
     if (analiseJogos.length === 0) {
-        linhasDosJogos = `<tr><td colspan="4" style="text-align:center; padding:30px; color:#aaa;">Aguardando sinal ou entrada de jogos ao vivo da API...</td></tr>`;
+        linhasDosJogos = `<tr><td colspan="4" style="text-align:center; padding:30px; color:#aaa;">Buscando dados na API-Football... Se a grade mundial estiver sem jogos ao vivo agora, o painel atualizará na próxima rodada automaticamente.</td></tr>`;
     } else {
         analiseJogos.forEach(j => {
             linhasDosJogos += `
@@ -114,7 +108,7 @@ app.get('/', (req, res) => {
         });
     }
 
-    const html = `
+    res.send(`
     <!DOCTYPE html>
     <html lang="pt-br">
     <head>
@@ -130,7 +124,7 @@ app.get('/', (req, res) => {
             th { background: #1a191f; color: #00b37e; font-size: 13px; text-align: left; padding: 12px; }
             td { padding: 12px; border-bottom: 1px solid #1c1b22; font-size: 13px; }
         </style>
-        <script>setTimeout(() => { window.location.reload(); }, 30000);</script>
+        <script>setTimeout(() => { window.location.reload(); }, 45000);</script>
     </head>
     <body>
         <div class="header">
@@ -152,8 +146,5 @@ app.get('/', (req, res) => {
         </table>
     </body>
     </html>
-    `;
-    res.send(html);
+    `);
 });
-
-app.listen(PORT, () => console.log(`🚀 Motor HTML operando na porta ${PORT}`));
