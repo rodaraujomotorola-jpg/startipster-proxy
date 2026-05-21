@@ -3,175 +3,87 @@ const axios = require('axios');
 const cors = require('cors');
 
 const app = express();
+
 app.use(cors());
+app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
-const CHAVE_API = process.env.API_KEY;
+const PORT = process.env.PORT || 8080;
+const API_KEY = process.env.API_KEY;
 
-const URL_JOGOS = 'https://v3.football.api-sports.io/fixtures';
+const API_URL = 'https://v3.football.api-sports.io/fixtures';
+
 const HEADERS = {
-    'x-rapidapi-host': 'v3.football.api-sports.io',
-    'x-rapidapi-key': CHAVE_API
+    'x-apisports-key': API_KEY
 };
 
-let analiseJogos = [];
-let ultimaAtualizacao = "Aguardando...";
+let cacheJogos = [];
+let ultimaAtualizacao = 'Aguardando...';
+let ultimaConsulta = 0;
 
-// Cérebro do STAR TIPSTER 5.0 — Aplica as regras de leitura quantitativa
-function analisarGatilhos(jogo) {
-    if (!jogo || !jogo.fixture || !jogo.fixture.status) {
-        return { gatilhoSugerido: "🛡️ Ritmo Controlado", corBadge: "#4d4d57", leitura: "Sem dados" };
-    }
-
-    const tempo = jogo.fixture.status.elapsed || 0;
-    const golsCasa = (jogo.goals && jogo.goals.home) ?? 0;
-    const golsVis = (jogo.goals && jogo.goals.away) ?? 0;
-    
-    let gatilhoSugerido = "🛡️ Ritmo Controlado";
-    let corBadge = "#4d4d57";
-    let leitura = "Jogo parelho / Estudo tático";
-
-    // ⚡ Regra 1: Pressão Absoluta no Fim (Empate buscando Gol Late)
-    if (tempo >= 75 && golsCasa === golsVis) {
-        gatilhoSugerido = "🔥 Pressão: Gol Late";
-        corBadge = "#f75a68";
-        leitura = "Minuto crítico. Tendência de abafagem final.";
-    } 
-    // ⚡ Regra 2: Tendência de Próximo Gol (Jogo Aberto e Alinhado)
-    else if (tempo > 15 && tempo < 70 && (golsCasa > 0 || golsVis > 0)) {
-        gatilhoSugerido = "📈 Tendência: Próximo Gol";
-        corBadge = "#00b37e";
-        leitura = "Partida movimentada. Placar em movimento.";
-    }
-    // ⚡ Regra 3: Pressão Inicial (Cantos e Volume no 1T)
-    else if (tempo > 0 && tempo <= 45) {
-        gatilhoSugerido = "📐 Análise: Pressão Inicial";
-        corBadge = "#fba94c";
-        leitura = "Construção de volume ofensivo no 1º Tempo.";
-    }
-
-    return { gatilhoSugerido, corBadge, leitura };
-}
-
-// Motor de Background — Consulta a API sem travar o site
-async function rodarMotorAnalise() {
-    if (!CHAVE_API) {
-        console.log("❌ API_KEY ausente nas variáveis da Railway.");
-        return;
-    }
-    try {
-        console.log("📡 Buscando grade de jogos ao vivo na API...");
-        const resposta = await axios.get(URL_JOGOS, { 
-            headers: HEADERS, 
-            params: { live: 'all' },
-            timeout: 8000 
-        });
-        
-        const jogos = resposta.data.response || [];
-        
-        // Mapeia os dados garantindo que objetos ausentes não quebrem o script
-        analiseJogos = jogos.filter(j => j && j.teams && j.fixture).map(jogo => {
-            const analise = analisarGatilhos(jogo);
-            
-            return {
-                id: jogo.fixture.id || Math.random(),
-                tempo: jogo.fixture.status.elapsed || 0,
-                liga: jogo.league ? jogo.league.name : 'Outros',
-                casa: jogo.teams.home ? jogo.teams.home.name : 'Casa',
-                visitante: jogo.teams.away ? jogo.teams.away.name : 'Visitante',
-                golsCasa: jogo.goals ? (jogo.goals.home ?? 0) : 0,
-                golsVis: jogo.goals ? (jogo.goals.away ?? 0) : 0,
-                gatilho: analise.gatilhoSugerido,
-                cor: analise.corBadge,
-                leitura: analise.leitura
-            };
-        });
-
-        const agora = new Date();
-        ultimaAtualizacao = agora.toLocaleTimeString('pt-BR');
-        console.log(`📊 STAR TIPSTER 5.0: ${analiseJogos.length} jogos processados às ${ultimaAtualizacao}.`);
-    } catch (erro) {
-        console.log("⚠️ Alerta de rede controlado: " + erro.message);
-    }
-}
-
-// Endpoint Principal (Interface Web Estilizada)
-app.get('/', (req, res) => {
-    let rows = '';
-    
-    if (!analiseJogos || analiseJogos.length === 0) {
-        rows = `
-            <tr>
-                <td colspan="4" style="text-align:center; padding:40px; color:#8d8d99; font-size:14px;">
-                    📡 Sincronizando com a grade mundial em tempo real...<br>
-                    <span style="font-size:11px; color:#555; display:block; margin-top:5px;">Aguardando retorno de partidas ativas da API-Football.</span>
-                </td>
-            </tr>`;
-    } else {
-        analiseJogos.forEach(j => {
-            rows += `
-                <tr>
-                    <td style="color:#fba94c; font-weight:bold; font-family:monospace; text-align:center;">⏱️ ${j.tempo}'</td>
-                    <td>
-                        <span style="color:#8d8d99; font-size:10px; display:block; margin-bottom:2px;">🏆 ${j.liga}</span>
-                        <strong>${j.casa}</strong> <span style="background:#1c1b22; padding:2px 6px; border-radius:4px; margin:0 3px; font-weight:bold; color:#00b37e;">${j.golsCasa}</span> x <span style="background:#1c1b22; padding:2px 6px; border-radius:4px; margin:0 3px; font-weight:bold; color:#00b37e;">${j.golsVis}</span> <strong>${j.visitante}</strong>
-                    </td>
-                    <td><span style="background-color:${j.cor}; color:#fff; padding:5px 9px; border-radius:4px; font-size:11px; font-weight:bold; display:inline-block; white-space:nowrap;">${j.gatilho}</span></td>
-                    <td style="color:#a6a6a6; font-size:11px; font-style:italic;">${j.leitura}</td>
-                </tr>
-            `;
-        });
-    }
-
-    res.send(`
-    <!DOCTYPE html>
-    <html lang="pt-br">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>STAR TIPSTER 5.0</title>
-        <style>
-            body { font-family: system-ui, -apple-system, sans-serif; background-color: #0b0a0d; color: #e1e1e6; margin: 0; padding: 12px; }
-            .header { text-align: center; padding: 15px 0; border-bottom: 1px solid #1c1b22; }
-            h1 { color: #00b37e; font-size: 20px; margin: 0; letter-spacing: 0.5px; }
-            .status-motor { display: inline-block; background: #1a191f; color: #00b37e; font-size: 10px; padding: 4px 10px; border-radius: 20px; margin-top: 6px; font-weight: bold; border: 1px solid #29292e; }
-            .update-time { font-size: 11px; color: #8d8d99; text-align: center; margin-top: 8px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #121214; border-radius: 8px; overflow: hidden; border: 1px solid #1c1b22; }
-            th { background: #1a191f; color: #00b37e; font-size: 11px; text-align: left; padding: 12px; border-bottom: 1px solid #29292e; }
-            td { padding: 12px; border-bottom: 1px solid #1c1b22; font-size: 12px; }
-            tr:hover { background: #15141c; }
-        </style>
-        <script>setTimeout(() => { window.location.reload(); }, 30000);</script>
-    </head>
-    <body>
-        <div class="header">
-            <h1>🤖 STAR TIPSTER 5.0 — LIVE SCOUT</h1>
-            <div class="status-motor">● PROMPT ENGINE ONLINE</div>
-            <div class="update-time">Última leitura estável: <strong>${ultimaAtualizacao}</strong></div>
-        </div>
-        <table>
-            <thead>
-                <tr>
-                    <th style="width:12%; text-align:center;">Tempo</th>
-                    <th style="width:43%;">Confronto / Liga</th>
-                    <th style="width:25%;">Gatilho</th>
-                    <th style="width:20%;">Leitura de Padrão</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${rows}
-            </tbody>
-        </table>
-    </body>
-    </html>
-    `);
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
 });
 
-// Inicialização imediata
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor escutando na porta ${PORT}`);
-    setTimeout(() => {
-        rodarMotorAnalise();
-        setInterval(rodarMotorAnalise, 300000); // 5 minutos
-    }, 2000);
-});
+function analisarJogo(jogo) {
+    const tempo = jogo?.fixture?.status?.elapsed || 0;
+    const status = jogo?.fixture?.status?.short || '';
+    const golsCasa = jogo?.goals?.home ?? 0;
+    const golsFora = jogo?.goals?.away ?? 0;
+
+    if (['FT', 'AET', 'PEN'].includes(status)) {
+        return null;
+    }
+
+    let prioridade = 40;
+    let gatilho = '🛡️ Ritmo Controlado';
+    let leitura = 'Partida sem pressão suficiente.';
+    let cor = '#4d4d57';
+
+    if (tempo >= 75 && golsCasa === golsFora) {
+        prioridade = 95;
+        gatilho = '🔥 Gol Late';
+        leitura = 'Empate em minuto crítico. Tendência de pressão final.';
+        cor = '#f75a68';
+    } else if (tempo >= 18 && tempo <= 70 && golsCasa + golsFora >= 1) {
+        prioridade = 82;
+        gatilho = '📈 Próximo Gol';
+        leitura = 'Partida aberta com placar em movimento.';
+        cor = '#00b37e';
+    } else if (tempo >= 1 && tempo <= 45) {
+        prioridade = 66;
+        gatilho = '📐 Pressão Inicial';
+        leitura = 'Volume ofensivo inicial em construção.';
+        cor = '#fba94c';
+    }
+
+    return { prioridade, gatilho, leitura, cor };
+}
+
+async function buscarJogosAoVivo() {
+    if (!API_KEY) {
+        console.log('❌ API_KEY ausente no Railway.');
+        return [];
+    }
+
+    const agora = Date.now();
+
+    if (agora - ultimaConsulta < 45000 && cacheJogos.length > 0) {
+        return cacheJogos;
+    }
+
+    console.log('📡 Consultando API Sports...');
+
+    const resposta = await axios.get(API_URL, {
+        headers: HEADERS,
+        params: {
+            live: 'all',
+            timezone: 'America/Sao_Paulo'
+        },
+        timeout: 10000
+    });
+
+    const jogos = resposta.data.response || [];
+
+    const processados = jogos
+        .map(jogo => {
+            const analise =
