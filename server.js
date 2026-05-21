@@ -18,9 +18,8 @@ let analiseJogos = [];
 let ultimaAtualizacao = "Aguardando...";
 
 function analisarGatilhos(jogo) {
-    // Adicionada checagem de segurança profunda para evitar quebras se os dados vierem incompletos
     if (!jogo || !jogo.fixture || !jogo.fixture.status) {
-        return { gatilhoSugerido: "🛡️ Ritmo Controlado", corBadge: "#4d4d57" };
+        return { gatilhoSugerido: "🛡️ Ritmo Controlado", corBadge: "#4d4d57", leitura: "Sem dados" };
     }
 
     const tempo = jogo.fixture.status.elapsed || 0;
@@ -29,19 +28,28 @@ function analisarGatilhos(jogo) {
     
     let gatilhoSugerido = "🛡️ Ritmo Controlado";
     let corBadge = "#4d4d57";
+    let leitura = "Jogo parelho / Estudo tático";
 
+    // ⚡ Regra 1: Pressão Absoluta no Fim (Empate buscando Gol Late)
     if (tempo >= 75 && golsCasa === golsVis) {
-        gatilhoSugerido = "🔥 Padrão Pressão: Gol Late";
+        gatilhoSugerido = "🔥 Pressão: Gol Late";
         corBadge = "#f75a68";
-    } else if (tempo > 15 && tempo < 70 && (golsCasa > 0 || golsVis > 0)) {
+        leitura = "Minuto crítico. Tendência de abafagem final.";
+    } 
+    // ⚡ Regra 2: Tendência de Próximo Gol (Jogo Aberto e Alinhado)
+    else if (tempo > 15 && tempo < 70 && (golsCasa > 0 || golsVis > 0)) {
         gatilhoSugerido = "📈 Tendência: Próximo Gol";
         corBadge = "#00b37e";
-    } else if (tempo > 0 && tempo <= 45) {
-        gatilhoSugerido = "📐 Análise: Cantos / Pressão";
+        leitura = "Partida movimentada. Placar em movimento.";
+    }
+    // ⚡ Regra 3: Pressão Inicial (Cantos e Volume no 1T)
+    else if (tempo > 0 && tempo <= 45) {
+        gatilhoSugerido = "📐 Análise: Pressão Inicial";
         corBadge = "#fba94c";
+        leitura = "Construção de volume ofensivo no 1º Tempo.";
     }
 
-    return { gatilhoSugerido, corBadge };
+    return { gatilhoSugerido, corBadge, leitura };
 }
 
 async function rodarMotorAnalise() {
@@ -59,7 +67,6 @@ async function rodarMotorAnalise() {
         
         const jogos = resposta.data.response || [];
         
-        // Mapeia os jogos aplicando a trava de segurança contra objetos nulos
         analiseJogos = jogos.filter(j => j && j.teams && j.fixture).map(jogo => {
             const id = jogo.fixture ? jogo.fixture.id : Math.random();
             const tempo = (jogo.fixture && jogo.fixture.status) ? jogo.fixture.status.elapsed : 0;
@@ -80,7 +87,8 @@ async function rodarMotorAnalise() {
                 golsCasa,
                 golsVis,
                 gatilho: analise.gatilhoSugerido,
-                cor: analise.corBadge
+                cor: analise.corBadge,
+                leitura: analise.leitura
             };
         });
 
@@ -95,11 +103,10 @@ async function rodarMotorAnalise() {
 app.get('/', (req, res) => {
     let rows = '';
     
-    // Se a lista estiver vazia, renderiza uma linha limpa de aviso sem quebrar o site
     if (!analiseJogos || analiseJogos.length === 0) {
         rows = `
             <tr>
-                <td colspan="3" style="text-align:center; padding:40px; color:#8d8d99; font-size:14px;">
+                <td colspan="4" style="text-align:center; padding:40px; color:#8d8d99; font-size:14px;">
                     📡 Sincronizando com a grade mundial em tempo real...<br>
                     <span style="font-size:11px; color:#555; display:block; margin-top:5px;">Aguardando retorno de partidas ativas da API-Football.</span>
                 </td>
@@ -108,12 +115,13 @@ app.get('/', (req, res) => {
         analiseJogos.forEach(j => {
             rows += `
                 <tr>
-                    <td style="color:#fba94c; font-weight:bold; font-family:monospace;">⏱️ ${j.tempo}'</td>
+                    <td style="color:#fba94c; font-weight:bold; font-family:monospace; text-align:center;">⏱️ ${j.tempo}'</td>
                     <td>
                         <span style="color:#8d8d99; font-size:10px; display:block; margin-bottom:2px;">🏆 ${j.liga}</span>
-                        <strong>${j.casa}</strong> <span style="background:#1c1b22; padding:2px 6px; border-radius:4px; margin:0 3px;">${j.golsCasa}</span> x <span style="background:#1c1b22; padding:2px 6px; border-radius:4px; margin:0 3px;">${j.golsVis}</span> <strong>${j.visitante}</strong>
+                        <strong>${j.casa}</strong> <span style="background:#1c1b22; padding:2px 6px; border-radius:4px; margin:0 3px; font-weight:bold; color:#00b37e;">${j.golsCasa}</span> x <span style="background:#1c1b22; padding:2px 6px; border-radius:4px; margin:0 3px; font-weight:bold; color:#00b37e;">${j.golsVis}</span> <strong>${j.visitante}</strong>
                     </td>
-                    <td><span style="background-color:${j.cor}; color:#fff; padding:5px 9px; border-radius:4px; font-size:11px; font-weight:bold; display:inline-block;">${j.gatilho}</span></td>
+                    <td><span style="background-color:${j.cor}; color:#fff; padding:5px 9px; border-radius:4px; font-size:11px; font-weight:bold; display:inline-block; white-space:nowrap;">${j.gatilho}</span></td>
+                    <td style="color:#a6a6a6; font-size:11px; font-style:italic;">${j.leitura}</td>
                 </tr>
             `;
         });
@@ -133,8 +141,9 @@ app.get('/', (req, res) => {
             .status-motor { display: inline-block; background: #1a191f; color: #00b37e; font-size: 10px; padding: 4px 10px; border-radius: 20px; margin-top: 6px; font-weight: bold; border: 1px solid #29292e; }
             .update-time { font-size: 11px; color: #8d8d99; text-align: center; margin-top: 8px; }
             table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #121214; border-radius: 8px; overflow: hidden; border: 1px solid #1c1b22; }
-            th { background: #1a191f; color: #00b37e; font-size: 12px; text-align: left; padding: 12px; border-bottom: 1px solid #29292e; }
-            td { padding: 12px; border-bottom: 1px solid #1c1b22; font-size: 13px; }
+            th { background: #1a191f; color: #00b37e; font-size: 11px; text-align: left; padding: 12px; border-bottom: 1px solid #29292e; }
+            td { padding: 12px; border-bottom: 1px solid #1c1b22; font-size: 12px; }
+            tr:hover { background: #15141c; }
         </style>
         <script>setTimeout(() => { window.location.reload(); }, 30000);</script>
     </head>
@@ -147,9 +156,10 @@ app.get('/', (req, res) => {
         <table>
             <thead>
                 <tr>
-                    <th>Tempo</th>
-                    <th>Confronto / Liga</th>
-                    <th>Gatilho Operacional</th>
+                    <th style="width:12%; text-align:center;">Tempo</th>
+                    <th style="width:43%;">Confronto / Liga</th>
+                    <th style="width:25%;">Gatilho</th>
+                    <th style="width:20%;">Leitura de Padrão</th>
                 </tr>
             </thead>
             <tbody>
@@ -165,6 +175,6 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor escutando na porta ${PORT}`);
     setTimeout(() => {
         rodarMotorAnalise();
-        setInterval(rodarMotorAnalise, 300000); // 5 minutos
+        setInterval(rodarMotorAnalise, 300000);
     }, 2000);
 });
