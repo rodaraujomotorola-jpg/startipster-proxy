@@ -17,6 +17,7 @@ const HEADERS = {
 let analiseJogos = [];
 let ultimaAtualizacao = "Aguardando...";
 
+// Cérebro do STAR TIPSTER 5.0 — Aplica as regras de leitura quantitativa
 function analisarGatilhos(jogo) {
     if (!jogo || !jogo.fixture || !jogo.fixture.status) {
         return { gatilhoSugerido: "🛡️ Ritmo Controlado", corBadge: "#4d4d57", leitura: "Sem dados" };
@@ -52,6 +53,7 @@ function analisarGatilhos(jogo) {
     return { gatilhoSugerido, corBadge, leitura };
 }
 
+// Motor de Background — Consulta a API sem travar o site
 async function rodarMotorAnalise() {
     if (!CHAVE_API) {
         console.log("❌ API_KEY ausente nas variáveis da Railway.");
@@ -67,25 +69,18 @@ async function rodarMotorAnalise() {
         
         const jogos = resposta.data.response || [];
         
+        // Mapeia os dados garantindo que objetos ausentes não quebrem o script
         analiseJogos = jogos.filter(j => j && j.teams && j.fixture).map(jogo => {
-            const id = jogo.fixture ? jogo.fixture.id : Math.random();
-            const tempo = (jogo.fixture && jogo.fixture.status) ? jogo.fixture.status.elapsed : 0;
-            const liga = (jogo.league) ? jogo.league.name : 'Outros';
-            const casa = (jogo.teams && jogo.teams.home) ? jogo.teams.home.name : 'Casa';
-            const visitante = (jogo.teams && jogo.teams.away) ? jogo.teams.away.name : 'Visitante';
-            const golsCasa = (jogo.goals) ? (jogo.goals.home ?? 0) : 0;
-            const golsVis = (jogo.goals) ? (jogo.goals.away ?? 0) : 0;
-
             const analise = analisarGatilhos(jogo);
-
+            
             return {
-                id,
-                tempo,
-                liga,
-                casa,
-                visitante,
-                golsCasa,
-                golsVis,
+                id: jogo.fixture.id || Math.random(),
+                tempo: jogo.fixture.status.elapsed || 0,
+                liga: jogo.league ? jogo.league.name : 'Outros',
+                casa: jogo.teams.home ? jogo.teams.home.name : 'Casa',
+                visitante: jogo.teams.away ? jogo.teams.away.name : 'Visitante',
+                golsCasa: jogo.goals ? (jogo.goals.home ?? 0) : 0,
+                golsVis: jogo.goals ? (jogo.goals.away ?? 0) : 0,
                 gatilho: analise.gatilhoSugerido,
                 cor: analise.corBadge,
                 leitura: analise.leitura
@@ -100,6 +95,7 @@ async function rodarMotorAnalise() {
     }
 }
 
+// Endpoint Principal (Interface Web Estilizada)
 app.get('/', (req, res) => {
     let rows = '';
     
@@ -171,10 +167,11 @@ app.get('/', (req, res) => {
     `);
 });
 
+// Inicialização imediata
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor escutando na porta ${PORT}`);
     setTimeout(() => {
         rodarMotorAnalise();
-        setInterval(rodarMotorAnalise, 300000);
+        setInterval(rodarMotorAnalise, 300000); // 5 minutos
     }, 2000);
 });
