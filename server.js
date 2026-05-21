@@ -5,7 +5,6 @@ const cors = require('cors');
 const app = express();
 app.use(cors());
 
-// Garante o uso correto da porta exigida pela nuvem
 const PORT = process.env.PORT || 3000;
 const CHAVE_API = process.env.API_KEY;
 
@@ -15,14 +14,11 @@ const HEADERS = {
     'x-rapidapi-key': CHAVE_API
 };
 
+// Memória do servidor para guardar os jogos processados
 let analiseJogos = [];
+let ultimaAtualizacao = "Nunca";
 
-// ROTA DE SEGURANÇA (Healthcheck): Diz para a Railway que o motor está perfeito
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
-});
-
-// Cérebro de processamento estatístico simplificado e ultra-rápido
+// Cérebro de Análise Quantitativa — Aplica as Regras Pró do STAR TIPSTER 5.0
 function analisarGatilhos(jogo) {
     const tempo = jogo.fixture.status.elapsed || 0;
     const golsCasa = jogo.goals.home ?? 0;
@@ -45,18 +41,18 @@ function analisarGatilhos(jogo) {
     return { gatilhoSugerido, corBadge };
 }
 
-// Motor assíncrono isolado para não congelar o servidor
+// Motor de Background — Roda isolado para não travar o Healthcheck da Railway
 async function rodarMotorAnalise() {
     if (!CHAVE_API) {
-        console.log("❌ API_KEY ausente nas variáveis de ambiente.");
+        console.log("❌ API_KEY ausente nas variáveis da Railway.");
         return;
     }
     try {
-        console.log("📡 Buscando dados em background...");
+        console.log("📡 Buscando grade de jogos ao vivo na API...");
         const resposta = await axios.get(URL_JOGOS, { 
             headers: HEADERS, 
             params: { live: 'all' },
-            timeout: 8000 // Desiste se a API demorar mais de 8 segundos
+            timeout: 7000 
         });
         
         const jogos = resposta.data.response || [];
@@ -76,28 +72,36 @@ async function rodarMotorAnalise() {
             };
         });
 
-        console.log(`📊 STAR TIPSTER 5.0: ${analiseJogos.length} jogos em análise.`);
+        const agora = new Date();
+        ultimaAtualizacao = agora.toLocaleTimeString('pt-BR');
+        console.log(`📊 STAR TIPSTER 5.0: ${analiseJogos.length} jogos processados às ${ultimaAtualizacao}.`);
     } catch (erro) {
-        console.log("⚠️ Intervalo de rede ignorado: " + erro.message);
+        console.log("⚠️ Alerta de rede ignorado (Servidor mantido vivo): " + erro.message);
     }
 }
 
-// ROTA PRINCIPAL: Renderiza a tabela estilizada para você ver no celular
+// ROTA PRINCIPAL: Abre na hora! Não consulta a API ao carregar, apenas lê o que está na memória
 app.get('/', (req, res) => {
     let linhasDosJogos = '';
     
     if (analiseJogos.length === 0) {
-        linhasDosJogos = `<tr><td colspan="3" style="text-align:center; padding:40px; color:#8d8d99;">📡 Sincronizando com a grade ao vivo... A tabela atualiza sozinha em instantes.</td></tr>`;
+        linhasDosJogos = `
+            <tr>
+                <td colspan="3" style="text-align:center; padding:40px; color:#8d8d99;">
+                    📡 Sincronizando com a grade mundial em tempo real...<br>
+                    <span style="font-size:11px; color:#666;">Aguardando primeiro disparo do motor (Segundos).</span>
+                </td>
+            </tr>`;
     } else {
         analiseJogos.forEach(j => {
             linhasDosJogos += `
                 <tr>
                     <td style="color:#fba94c; font-weight:bold; font-family:monospace;">⏱️ ${j.tempo}'</td>
                     <td>
-                        <span style="color:#8d8d99; font-size:10px; display:block;">🏆 ${j.liga}</span>
-                        <strong>${j.casa}</strong> [${j.golsCasa}] x [${j.golsVis}] <strong>${j.visitante}</strong>
+                        <span style="color:#8d8d99; font-size:10px; display:block; margin-bottom:2px;">🏆 ${j.liga}</span>
+                        <strong>${j.casa}</strong> <span style="background:#1c1b22; padding:2px 6px; border-radius:4px; margin:0 3px;">${j.golsCasa}</span> x <span style="background:#1c1b22; padding:2px 6px; border-radius:4px; margin:0 3px;">${j.golsVis}</span> <strong>${j.visitante}</strong>
                     </td>
-                    <td><span style="background-color:${j.cor}; color:#fff; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:bold;">${j.gatilho}</span></td>
+                    <td><span style="background-color:${j.cor}; color:#fff; padding:5px 9px; border-radius:4px; font-size:11px; font-weight:bold; display:inline-block;">${j.gatilho}</span></td>
                 </tr>
             `;
         });
@@ -111,24 +115,29 @@ app.get('/', (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>STAR TIPSTER 5.0</title>
         <style>
-            body { font-family: system-ui, sans-serif; background-color: #0b0a0d; color: #e1e1e6; padding: 12px; margin: 0; }
-            h1 { color: #00b37e; font-size: 18px; text-align: center; margin: 10px 0 0 0; }
-            .sub { text-align: center; font-size: 11px; color: #8d8d99; margin-bottom: 15px; }
-            table { width: 100%; border-collapse: collapse; background: #121214; border-radius: 6px; overflow: hidden; }
-            th { background: #1a191f; color: #00b37e; font-size: 11px; text-align: left; padding: 10px; }
-            td { padding: 10px; border-bottom: 1px solid #1c1b22; font-size: 12px; }
+            body { font-family: system-ui, -apple-system, sans-serif; background-color: #0b0a0d; color: #e1e1e6; margin: 0; padding: 12px; }
+            .header { text-align: center; padding: 15px 0; border-bottom: 1px solid #1c1b22; }
+            h1 { color: #00b37e; font-size: 20px; margin: 0; letter-spacing: 0.5px; }
+            .status-motor { display: inline-block; background: #1a191f; color: #00b37e; font-size: 10px; padding: 4px 10px; border-radius: 20px; margin-top: 6px; font-weight: bold; border: 1px solid #29292e; }
+            .update-time { font-size: 11px; color: #8d8d99; text-align: center; margin-top: 8px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #121214; border-radius: 8px; overflow: hidden; border: 1px solid #1c1b22; }
+            th { background: #1a191f; color: #00b37e; font-size: 12px; text-align: left; padding: 12px; border-bottom: 1px solid #29292e; }
+            td { padding: 12px; border-bottom: 1px solid #1c1b22; font-size: 13px; }
         </style>
         <script>setTimeout(() => { window.location.reload(); }, 30000);</script>
     </head>
     <body>
-        <h1>🤖 STAR TIPSTER 5.0</h1>
-        <div class="sub">MONITORAMENTO QUANTITATIVO ATIVO</div>
+        <div class="header">
+            <h1>🤖 STAR TIPSTER 5.0 — LIVE SCOUT</h1>
+            <div class="status-motor">● PROMPT ENGINE ONLINE</div>
+            <div class="update-time">Última leitura da API: <strong>${ultimaAtualizacao}</strong></div>
+        </div>
         <table>
             <thead>
                 <tr>
                     <th>Tempo</th>
-                    <th>Jogo / Liga</th>
-                    <th>Sinal Operacional</th>
+                    <th>Confronto / Liga</th>
+                    <th>Gatilho Operacional</th>
                 </tr>
             </thead>
             <tbody>
@@ -140,14 +149,13 @@ app.get('/', (req, res) => {
     `);
 });
 
-// Inicialização imediata do servidor para travar o Healthcheck com sucesso
+// Inicialização estável e imediata para passar direto pelo Healthcheck da Railway
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor rodando com sucesso na porta ${PORT}`);
+    console.log(`🚀 Servidor escutando na porta ${PORT} de forma estável.`);
     
-    // Deixa o servidor se estabilizar por 4 segundos antes de buscar jogos pela primeira vez
+    // O segredo está aqui: o site fica online primeiro, e a busca só inicia 2 segundos depois!
     setTimeout(() => {
         rodarMotorAnalise();
-        // Atualiza a cada 3 minutos
-        setInterval(rodarMotorAnalise, 180000);
-    }, 4000);
+        setInterval(rodarMotorAnalise, 300000); // Executa a cada 5 minutos
+    }, 2000);
 });
