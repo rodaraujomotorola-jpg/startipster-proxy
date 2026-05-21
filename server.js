@@ -14,15 +14,18 @@ const HEADERS = {
     'x-rapidapi-key': CHAVE_API
 };
 
-// Memória do servidor para guardar os jogos processados
 let analiseJogos = [];
-let ultimaAtualizacao = "Nunca";
+let ultimaAtualizacao = "Aguardando...";
 
-// Cérebro de Análise Quantitativa — Aplica as Regras Pró do STAR TIPSTER 5.0
 function analisarGatilhos(jogo) {
+    // Adicionada checagem de segurança profunda para evitar quebras se os dados vierem incompletos
+    if (!jogo || !jogo.fixture || !jogo.fixture.status) {
+        return { gatilhoSugerido: "🛡️ Ritmo Controlado", corBadge: "#4d4d57" };
+    }
+
     const tempo = jogo.fixture.status.elapsed || 0;
-    const golsCasa = jogo.goals.home ?? 0;
-    const golsVis = jogo.goals.away ?? 0;
+    const golsCasa = (jogo.goals && jogo.goals.home) ?? 0;
+    const golsVis = (jogo.goals && jogo.goals.away) ?? 0;
     
     let gatilhoSugerido = "🛡️ Ritmo Controlado";
     let corBadge = "#4d4d57";
@@ -41,7 +44,6 @@ function analisarGatilhos(jogo) {
     return { gatilhoSugerido, corBadge };
 }
 
-// Motor de Background — Roda isolado para não travar o Healthcheck da Railway
 async function rodarMotorAnalise() {
     if (!CHAVE_API) {
         console.log("❌ API_KEY ausente nas variáveis da Railway.");
@@ -52,21 +54,31 @@ async function rodarMotorAnalise() {
         const resposta = await axios.get(URL_JOGOS, { 
             headers: HEADERS, 
             params: { live: 'all' },
-            timeout: 7000 
+            timeout: 8000 
         });
         
         const jogos = resposta.data.response || [];
         
-        analiseJogos = jogos.map(jogo => {
+        // Mapeia os jogos aplicando a trava de segurança contra objetos nulos
+        analiseJogos = jogos.filter(j => j && j.teams && j.fixture).map(jogo => {
+            const id = jogo.fixture ? jogo.fixture.id : Math.random();
+            const tempo = (jogo.fixture && jogo.fixture.status) ? jogo.fixture.status.elapsed : 0;
+            const liga = (jogo.league) ? jogo.league.name : 'Outros';
+            const casa = (jogo.teams && jogo.teams.home) ? jogo.teams.home.name : 'Casa';
+            const visitante = (jogo.teams && jogo.teams.away) ? jogo.teams.away.name : 'Visitante';
+            const golsCasa = (jogo.goals) ? (jogo.goals.home ?? 0) : 0;
+            const golsVis = (jogo.goals) ? (jogo.goals.away ?? 0) : 0;
+
             const analise = analisarGatilhos(jogo);
+
             return {
-                id: jogo.fixture.id,
-                tempo: jogo.fixture.status.elapsed || 0,
-                liga: jogo.league.name || 'Outros',
-                casa: jogo.teams.home.name,
-                visitante: jogo.teams.away.name,
-                golsCasa: jogo.goals.home ?? 0,
-                golsVis: jogo.goals.away ?? 0,
+                id,
+                tempo,
+                liga,
+                casa,
+                visitante,
+                golsCasa,
+                golsVis,
                 gatilho: analise.gatilhoSugerido,
                 cor: analise.corBadge
             };
@@ -76,25 +88,25 @@ async function rodarMotorAnalise() {
         ultimaAtualizacao = agora.toLocaleTimeString('pt-BR');
         console.log(`📊 STAR TIPSTER 5.0: ${analiseJogos.length} jogos processados às ${ultimaAtualizacao}.`);
     } catch (erro) {
-        console.log("⚠️ Alerta de rede ignorado (Servidor mantido vivo): " + erro.message);
+        console.log("⚠️ Alerta de rede controlado: " + erro.message);
     }
 }
 
-// ROTA PRINCIPAL: Abre na hora! Não consulta a API ao carregar, apenas lê o que está na memória
 app.get('/', (req, res) => {
-    let linhasDosJogos = '';
+    let rows = '';
     
-    if (analiseJogos.length === 0) {
-        linhasDosJogos = `
+    // Se a lista estiver vazia, renderiza uma linha limpa de aviso sem quebrar o site
+    if (!analiseJogos || analiseJogos.length === 0) {
+        rows = `
             <tr>
-                <td colspan="3" style="text-align:center; padding:40px; color:#8d8d99;">
+                <td colspan="3" style="text-align:center; padding:40px; color:#8d8d99; font-size:14px;">
                     📡 Sincronizando com a grade mundial em tempo real...<br>
-                    <span style="font-size:11px; color:#666;">Aguardando primeiro disparo do motor (Segundos).</span>
+                    <span style="font-size:11px; color:#555; display:block; margin-top:5px;">Aguardando retorno de partidas ativas da API-Football.</span>
                 </td>
             </tr>`;
     } else {
         analiseJogos.forEach(j => {
-            linhasDosJogos += `
+            rows += `
                 <tr>
                     <td style="color:#fba94c; font-weight:bold; font-family:monospace;">⏱️ ${j.tempo}'</td>
                     <td>
@@ -130,7 +142,7 @@ app.get('/', (req, res) => {
         <div class="header">
             <h1>🤖 STAR TIPSTER 5.0 — LIVE SCOUT</h1>
             <div class="status-motor">● PROMPT ENGINE ONLINE</div>
-            <div class="update-time">Última leitura da API: <strong>${ultimaAtualizacao}</strong></div>
+            <div class="update-time">Última leitura estável: <strong>${ultimaAtualizacao}</strong></div>
         </div>
         <table>
             <thead>
@@ -141,7 +153,7 @@ app.get('/', (req, res) => {
                 </tr>
             </thead>
             <tbody>
-                ${linhasDosJogos}
+                ${rows}
             </tbody>
         </table>
     </body>
@@ -149,13 +161,10 @@ app.get('/', (req, res) => {
     `);
 });
 
-// Inicialização estável e imediata para passar direto pelo Healthcheck da Railway
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor escutando na porta ${PORT} de forma estável.`);
-    
-    // O segredo está aqui: o site fica online primeiro, e a busca só inicia 2 segundos depois!
+    console.log(`🚀 Servidor escutando na porta ${PORT}`);
     setTimeout(() => {
         rodarMotorAnalise();
-        setInterval(rodarMotorAnalise, 300000); // Executa a cada 5 minutos
+        setInterval(rodarMotorAnalise, 300000); // 5 minutos
     }, 2000);
 });
